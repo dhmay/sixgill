@@ -1,0 +1,177 @@
+#!/usr/bin/env python
+"""
+Merge multiple proteinlet database files into a single proteinlet database. Optionally, filter simultaneously.
+"""
+
+import argparse
+import logging
+from datetime import datetime
+from sixgill import proteinlets
+import sys
+from Bio import bgzf
+from collections import OrderedDict
+import csv
+import os
+
+__author__ = "Damon May"
+__copyright__ = "Copyright (c) 2016 Damon May"
+__license__ = "Apache 2.0"
+__version__ = "0.1"
+
+logger = logging.getLogger(__name__)
+
+
+def declare_gather_args():
+    """
+    Declare all arguments, parse them, and return the args dict.
+    Does no validation beyond the implicit validation done by argparse.
+    return: a dict mapping arg names to values
+    """
+
+    # declare args
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('proteinletdbfiles', type=argparse.FileType('r'), nargs='+',
+                        help='input proteinlet database files')
+    parser.add_argument('--out', type=argparse.FileType('w'), required=True,
+                        help='output file')
+    parser.add_argument('--minorflength', type=int, default=0,
+                        help='minimum ORF length')
+    parser.add_argument('--minaaseqlength', type=int, default=0,
+                        help='minimum AA sequence length')
+    parser.add_argument('--minqualscore', type=int, default=0,
+                        help='minimum read quality score')
+    parser.add_argument('--minreadcount', type=int, default=0,
+                        help='minimum read count')
+    parser.add_argument('--minlongesttryppeplen', type=int, default=0,
+                        help='minimum length of the longest tryptic peptide')
+    parser.add_argument('--nostartm', action="store_true", help='Remove proteinlets generated from a start M?',
+                        default=False)
+    parser.add_argument('--nostopcodon', action="store_true",
+                        help='Remove proteinlets if they come from a nucleotide sequence with a stop codon?')
+
+    parser.add_argument('--debug', action="store_true", help='Enable debug logging')
+    return parser.parse_args()
+
+
+def main():
+    args = declare_gather_args()
+    # logging
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s: %(message)s")
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        # any module-specific debugging goes below
+
+    script_start_time = datetime.now()
+    logger.debug("Start time: %s" % script_start_time)
+
+    read_written_xvals = []
+    read_written_yvals = []
+    ns_read_per_file = []
+
+    out_tempfilename = args.out.name + '.temp.gz'
+    out_tempfile = bgzf.BgzfWriter(out_tempfilename, "w")
+    print("Created tempfile %s" % out_tempfilename)
+
+    # map from proteinlets to counts of reads they occur in and min qual score
+    proteinletseq_readcount_minqualscore_altseqs_map = OrderedDict()
+    n_lines_read = 0
+    if out_tempfile:
+        out_tempfile.write('\t'.join(proteinlets.PROTEINLETDB_COLUMNS) + "\n")
+    for proteinlet_file in args.proteinletdbfiles:
+        proteinlet_filename = proteinlet_file.name
+        proteinlet_file = bgzf.BgzfReader(proteinlet_filename)
+        print("Reading file %s..." % proteinlet_filename)
+        n_lines_this_file = 0
+        for proteinlet in proteinlets.read_proteinlets(proteinlet_file):
+            if n_lines_read % 5000000 == 0:
+                print("    Read %d lines (all files). Wrote %d to temp file...." %
+                      (n_lines_read, len(proteinletseq_readcount_minqualscore_altseqs_map)))
+                read_written_xvals.append(n_lines_read)
+                read_written_yvals.append(len(proteinletseq_readcount_minqualscore_altseqs_map))
+                sys.stdout.flush()
+                out_tempfile.flush()
+            n_lines_this_file += 1
+            n_lines_read += 1
+
+            if proteinlet.sequence in proteinletseq_readcount_minqualscore_altseqs_map:
+                # not a new one. Update our recordkeeping
+                data_list_thisproteinlet = proteinletseq_readcount_minqualscore_altseqs_map[proteinlet.sequence]
+                data_list_thisproteinlet[0] += proteinlet.n_reads
+                data_list_thisproteinlet[1] = min(data_list_thisproteinlet[1],
+                                                                       proteinlet.min_qualscore)
+                nt_seqs_thisproteinlet = data_list_thisproteinlet[2]
+                if nt_seqs_thisproteinlet is None:
+                    data_list_thisproteinlet[2] = proteinlet.nt_seqs
+                else:
+                    for nt_seq in proteinlet.nt_seqs:
+                        if nt_seq not in nt_seqs_thisproteinlet:
+                            nt_seqs_thisproteinlet.append(nt_seq)
+            else:
+                # Got a new one. Put it in the map, and write it out if we're writing
+                if proteinlet.passes_filter(args.minaaseqlength,
+                                            args.minorflength,
+                                            0, 0,
+                                            args.minlongesttryppeplen):
+                    if out_tempfile:
+                        out_tempfile.write(proteinlet.make_output_line() + '\n')
+                # got a new one that we want to keep
+                proteinletseq_readcount_minqualscore_altseqs_map[proteinlet.sequence] = [proteinlet.n_reads,
+                                                                                         proteinlet.min_qualscore,
+                                                                                         proteinlet.nt_seqs]
+        ns_read_per_file.append(n_lines_this_file)
+        print("Read %d lines this file" % n_lines_this_file)
+        n_lines_read += n_lines_this_file
+
+    print("Done reading input databases. Read %d proteinlet lines, %d unique proteinlets" %
+          (n_lines_read, len(proteinletseq_readcount_minqualscore_altseqs_map)))
+
+    out_tempfile.close()
+    # close the temp file for writing
+    print("Wrote temp file %s" % out_tempfilename)
+
+    # open it right back up again for reading
+    tempfile_csvreader = csv.DictReader(bgzf.BgzfReader(out_tempfilename), delimiter='\t')
+
+    out_proteinlet_file = bgzf.BgzfWriter(args.out.name, "w")
+    print("Building output file %s with count, min quality data..." % args.out.name)
+    out_proteinlet_file.write("\t".join(proteinlets.PROTEINLETDB_COLUMNS) + '\n')
+
+    # update the temp file rows with correct readcount and minqualscore data, write the real file
+    n_removed_count_or_qual = 0
+    n_written = 0
+    for proteinletseq in proteinletseq_readcount_minqualscore_altseqs_map:
+        tempfile_row = tempfile_csvreader.next()
+        # paranoiacally check that we're merging the right rows
+        assert(tempfile_row['sequence'] == proteinletseq)
+
+        # check readcount and qualscore. If they both pass, update the row appropriately and write it
+        readcount, minqualscore, altseqs = proteinletseq_readcount_minqualscore_altseqs_map[proteinletseq]
+        if readcount >= args.minreadcount and minqualscore >= args.minqualscore:
+            tempfile_row['n_reads'] = str(readcount)
+            tempfile_row['min_qualscore'] = str(minqualscore)
+            # update the nt_sequence column to contain all sequences
+            nt_seqs = tempfile_row['nt_sequence'].split(',')
+            for alt_seq in altseqs:
+                if alt_seq not in nt_seqs:
+                    altseqs.append(alt_seq)
+            tempfile_row['nt_sequence'] = ','.join(nt_seqs)
+            args.out.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
+            n_written += 1
+        else:
+            n_removed_count_or_qual += 1
+
+    args.out.close()
+
+    if args.minreadcount > 0 or args.minqualscore > 0:
+        print("Removed %d due to low read count or quality." % n_removed_count_or_qual)
+
+    os.remove(out_tempfilename)
+    print("Deleted temp file")
+
+    print("Wrote %d entries to proteinlet database file %s." % (n_written, args.out.name))
+
+    print("Done.")
+
+
+main()
