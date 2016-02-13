@@ -29,4 +29,6 @@ Sixgill uses the following python packages:
 
     pip install biopython pysam sixgill
 
+## Documentation
 
+More detailed documentation on using Sixgill is [here](https://github.com/dhmay/sixgill/wiki).
