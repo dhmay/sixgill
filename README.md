@@ -31,4 +31,4 @@ Sixgill uses the following python packages:
 
 ## Documentation
 
-More detailed documentation on using Sixgill is [here](https://github.com/dhmay/sixgill/wiki).
+The [Sixgill wiki](https://github.com/dhmay/sixgill/wiki) contains more detailed information on using Sixgill.
