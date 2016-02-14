@@ -1,14 +1,14 @@
-![](http://noble.gs.washington.edu/proj/proteinlet/images/sixgill_logo.png)
+![](http://noble.gs.washington.edu/proj/metapeptide/images/sixgill_logo.png)
 
 # Sixgill
 Six-frame Genome-Inferred Libraries for LC-MS/MS
 
 ## What is Sixgill?
 
-Sixgill is a tool for using shotgun metagenomics sequencing reads to construct databases of 'proteinlets':
+Sixgill is a tool for using shotgun metagenomics sequencing reads to construct databases of 'metapeptides':
 short protein fragments for database search of LC-MS/MS metaproteomics data. A comprehensive set of 
-resources for building and using proteinlet databases is 
-[here](http://noble.gs.washington.edu/proj/proteinlet/).
+resources for building and using metapeptide databases is 
+[here](http://noble.gs.washington.edu/proj/metapeptide/).
 
 ## Required Python versions
 
