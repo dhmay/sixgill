@@ -44,10 +44,6 @@ def declare_gather_args():
                         help='minimum read count')
     parser.add_argument('--minlongesttryppeplen', type=int, default=0,
                         help='minimum length of the longest tryptic peptide')
-    parser.add_argument('--nostartm', action="store_true", help='Remove proteinlets generated from a start M?',
-                        default=False)
-    parser.add_argument('--nostopcodon', action="store_true",
-                        help='Remove proteinlets if they come from a nucleotide sequence with a stop codon?')
 
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     return parser.parse_args()
