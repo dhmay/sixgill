@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 """
-Filter a proteinlet database.
+Filter a metapeptide database.
 """
 
 import argparse
 import logging
 from datetime import datetime
 from Bio import bgzf
-from sixgill import proteinlets
+from sixgill import metapeptides
 
 __author__ = "Damon May"
 __copyright__ = "Copyright (c) 2016 Damon May"
@@ -28,10 +28,10 @@ def declare_gather_args():
 
     # declare args
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('proteinletfile', type=argparse.FileType('r'),
-                        help='input proteinlet database file')
+    parser.add_argument('metapeptidefile', type=argparse.FileType('r'),
+                        help='input metapeptide database file')
     parser.add_argument('--out', required=True, type=argparse.FileType('w'),
-                        help='output proteinlet database file')
+                        help='output metapeptide database file')
     parser.add_argument('--minorflength', type=int, default=0,
                         help='minimum ORF length')
     parser.add_argument('--minaaseqlength', type=int, default=0,
@@ -42,8 +42,8 @@ def declare_gather_args():
                         help='minimum basecall quality')
     parser.add_argument('--minlongesttryppeplen', type=int, default=0,
                         help='minimum length of the longest tryptic peptide')
-    parser.add_argument('--maxproteinlets', type=int, default=None,
-                        help='maximum number of proteinlets to write')
+    parser.add_argument('--maxmetapeptides', type=int, default=None,
+                        help='maximum number of metapeptides to write')
 
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     return parser.parse_args()
@@ -57,25 +57,25 @@ def main():
     if args.debug:
         logger.setLevel(logging.DEBUG)
         # any module-specific debugging goes below
-        proteinlets.logger.setLevel(logging.DEBUG)
+        metapeptides.logger.setLevel(logging.DEBUG)
 
     script_start_time = datetime.now()
     logger.debug("Start time: %s" % script_start_time)
 
     out_bgzfwriter = bgzf.BgzfWriter(args.out.name, "w")
 
-    print("Processing file %s" % args.proteinletfile.name)
+    print("Processing file %s" % args.metapeptidefile.name)
 
-    db_file = bgzf.BgzfReader(args.proteinletfile.name)
-    n_rows_written = proteinlets.write_proteinlets(proteinlets.filter_proteinlets(
-            proteinlets.read_proteinlets(db_file),
+    db_file = bgzf.BgzfReader(args.metapeptidefile.name)
+    n_rows_written = metapeptides.write_metapeptides(metapeptides.filter_metapeptides(
+            metapeptides.read_metapeptides(db_file),
             args.minorflength, args.minaaseqlength,
             args.minreadcount, args.minquality, args.minlongesttryppeplen,
-            max_proteinlets=args.maxproteinlets),
+            max_metapeptides=args.maxmetapeptides),
         out_bgzfwriter)
 
     args.out.close()
-    print("Wrote proteinlet database %s" % args.out.name)
+    print("Wrote metapeptide database %s" % args.out.name)
     print("Done. Wrote %d rows" % n_rows_written)
 
 

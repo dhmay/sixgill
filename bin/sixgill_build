@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 """
 Read in one or more fastq files. For each read, do a 6-frame translation and add all
-proteinlets that pass the specified filtering criteria.
+metapeptides that pass the specified filtering criteria.
 """
 
 import argparse
 import logging
 from datetime import datetime
 import pysam
-from sixgill import proteinlets
+from sixgill import metapeptides
 import sys
 from collections import OrderedDict
 from Bio import bgzf
@@ -35,22 +35,22 @@ def declare_gather_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('fastqfiles', type=argparse.FileType('r'), nargs='+',
                         help='input fastq file(s), bgzipped')
-    parser.add_argument('--minproteinletlength', type=int, help='min AA length of a proteinlet',
-                        default=proteinlets.DEFAULT_MIN_PROTEINLET_AALENGTH)
-    parser.add_argument('--minqualscore', type=int, help='min base-call phred score across any NT in a proteinlet',
-                        default=proteinlets.DEFAULT_MIN_AA_QUALSCORE)
+    parser.add_argument('--minlength', type=int, help='min AA length of a metapeptide',
+                        default=metapeptides.DEFAULT_MIN_PROTEINLET_AALENGTH)
+    parser.add_argument('--minqualscore', type=int, help='min base-call phred score across any NT in a metapeptide',
+                        default=metapeptides.DEFAULT_MIN_AA_QUALSCORE)
     parser.add_argument('--minorflength', type=int, help='min length of ORF-portion',
-                        default=proteinlets.DEFAULT_MIN_ORF_LENGTH)
+                        default=metapeptides.DEFAULT_MIN_ORF_LENGTH)
     parser.add_argument('--minlongesttryppeplen', type=int,
-                        default=proteinlets.DEFAULT_MIN_LONGEST_PEPTIDE_LENGTH,
+                        default=metapeptides.DEFAULT_MIN_LONGEST_PEPTIDE_LENGTH,
                         help='minimum length of the longest tryptic peptide')
     parser.add_argument('--maxreads', type=int, help='stop early if we hit this many reads')
-    parser.add_argument('--minreadcount', type=int, default=proteinlets.DEFAULT_MIN_READ_COUNT,
+    parser.add_argument('--minreadcount', type=int, default=metapeptides.DEFAULT_MIN_READ_COUNT,
                         help='minimum read count')
     parser.add_argument('--out', required=True, type=argparse.FileType('w'),
-                        help='Output proteinlet database file')
+                        help='Output metapeptide database file')
     parser.add_argument('--outfasta', type=argparse.FileType('w'),
-                        help='Output proteinlet fasta database file')
+                        help='Output metapeptide fasta database file')
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     return parser.parse_args()
 
@@ -62,30 +62,30 @@ def main():
                         format="%(asctime)s %(levelname)s: %(message)s")
     if args.debug:
         logger.setLevel(logging.DEBUG)
-        proteinlets.logger.setLevel(logging.DEBUG)
+        metapeptides.logger.setLevel(logging.DEBUG)
 
     script_start_time = datetime.now()
     logger.debug("Start time: %s" % script_start_time)
 
-    # map from proteinlets to counts of reads they occur in and min qual score and alternative seq list.
+    # map from metapeptides to counts of reads they occur in and min qual score and alternative seq list.
     # maintains order, for reading back from temp file
-    proteinletseq_readcount_minqualscore_altseqs_map = OrderedDict()
+    metapeptideseq_readcount_minqualscore_altseqs_map = OrderedDict()
 
-    # for plotting read count vs. # proteinlets
-    readsprocessed_nproteinlets_xvals = []
-    readsprocessed_nproteinlets_yvals = []
+    # for plotting read count vs. # metapeptides
+    readsprocessed_nmetapeptides_xvals = []
+    readsprocessed_nmetapeptides_yvals = []
 
     # read back some of the filtering parameters
     print("Min ORF length: %d" % args.minorflength)
     print("Minimum quality score: %d" % args.minqualscore)
-    print("Minimum proteinlet AA sequence length: %d" % args.minproteinletlength)
+    print("Minimum metapeptide AA sequence length: %d" % args.minmetapeptidelength)
 
     out_filename = args.out.name
-    # Write a temporary file for storing full proteinlet information. This
+    # Write a temporary file for storing full metapeptide information. This
     # can easily become too big to fit in memory.
-    out_proteinlet_tempfilename = out_filename + '.temp'
-    out_proteinlet_tempfile = bgzf.BgzfWriter(out_proteinlet_tempfilename, "w")
-    out_proteinlet_tempfile.write('\t'.join(proteinlets.PROTEINLETDB_COLUMNS) + "\n")
+    out_metapeptide_tempfilename = out_filename + '.temp'
+    out_metapeptide_tempfile = bgzf.BgzfWriter(out_metapeptide_tempfilename, "w")
+    out_metapeptide_tempfile.write('\t'.join(metapeptides.PROTEINLETDB_COLUMNS) + "\n")
 
     # accounting
     n_reads_processed = -1
@@ -95,8 +95,8 @@ def main():
     n_frames_discarded_longestpep_tooshort = 0
     n_frames_discarded_toofew_trypticsites = 0
 
-    n_frames_used_in_proteinlets = 0
-    n_proteinlets_written_temp = 0
+    n_frames_used_in_metapeptides = 0
+    n_metapeptides_written_temp = 0
 
     for fastq_file in args.fastqfiles:
         if args.maxreads and n_reads_processed >= args.maxreads:
@@ -110,25 +110,25 @@ def main():
                 break
             n_reads_processed += 1
             if n_reads_processed % 50000 == 0:
-                readsprocessed_nproteinlets_xvals.append(n_reads_processed)
-                readsprocessed_nproteinlets_yvals.append(len(proteinletseq_readcount_minqualscore_altseqs_map))
+                readsprocessed_nmetapeptides_xvals.append(n_reads_processed)
+                readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_readcount_minqualscore_altseqs_map))
                 if n_reads_processed % 100000 == 0:
-                    print("    Processed %d records. %d proteinlets so far. Time=%s" %
-                          (n_reads_processed, len(proteinletseq_readcount_minqualscore_altseqs_map),
+                    print("    Processed %d records. %d metapeptides so far. Time=%s" %
+                          (n_reads_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map),
                            datetime.now() - script_start_time))
                 sys.stdout.flush()
-                if out_proteinlet_tempfile:
-                    out_proteinlet_tempfile.flush()
+                if out_metapeptide_tempfile:
+                    out_metapeptide_tempfile.flush()
 
             ntseq = str(aread.sequence)
             # have to subtract offset of 33 from pysam basecall quality
             phred_qualscores = [ord(x) - 33 for x in aread.quality]
 
-            # get all the proteinlets we can from this read
-            proteinlets_this_read, (n_discarded_tooshort, n_discarded_minqualscore,
+            # get all the metapeptides we can from this read
+            metapeptides_this_read, (n_discarded_tooshort, n_discarded_minqualscore,
                                     n_discarded_stopcodon, n_discarded_longestpep_tooshort,
                                     n_discarded_toofew_trypticsites) = \
-                proteinlets.extract_read_proteinlets(ntseq, phred_qualscores, args.minproteinletlength,
+                metapeptides.extract_read_metapeptides(ntseq, phred_qualscores, args.minmetapeptidelength,
                                                      args.minqualscore, args.minorflength, args.minlongesttryppeplen)
             # accounting
             n_frames_discarded_tooshort += n_discarded_tooshort
@@ -136,64 +136,64 @@ def main():
             n_frames_discarded_stopcodon += n_discarded_stopcodon
             n_frames_discarded_longestpep_tooshort += n_discarded_longestpep_tooshort
             n_frames_discarded_toofew_trypticsites += n_discarded_toofew_trypticsites
-            n_frames_used_in_proteinlets += len(proteinlets_this_read)
+            n_frames_used_in_metapeptides += len(metapeptides_this_read)
 
-            # for each proteinlet, if we haven't encountered it before, write it to the temp file.
+            # for each metapeptide, if we haven't encountered it before, write it to the temp file.
             # if we have, update the accounting for its entry
-            for proteinlet in proteinlets_this_read:
-                if proteinlet.sequence not in proteinletseq_readcount_minqualscore_altseqs_map:
-                    n_proteinlets_written_temp += 1
-                    proteinletseq_readcount_minqualscore_altseqs_map[proteinlet.sequence] = \
-                        [1, proteinlet.min_qualscore, None]
-                    out_proteinlet_tempfile.write(proteinlet.make_output_line() + "\n")
+            for metapeptide in metapeptides_this_read:
+                if metapeptide.sequence not in metapeptideseq_readcount_minqualscore_altseqs_map:
+                    n_metapeptides_written_temp += 1
+                    metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence] = \
+                        [1, metapeptide.min_qualscore, None]
+                    out_metapeptide_tempfile.write(metapeptide.make_output_line() + "\n")
                 else:
-                    data_list_thisproteinlet = proteinletseq_readcount_minqualscore_altseqs_map[proteinlet.sequence]
-                    data_list_thisproteinlet[0] += 1
-                    data_list_thisproteinlet[1] = max(proteinletseq_readcount_minqualscore_altseqs_map[proteinlet.sequence][1],
-                                                      proteinlet.min_qualscore)
-                    if data_list_thisproteinlet[2] is None:
-                        data_list_thisproteinlet[2] = proteinlet.nt_seqs
+                    data_list_thismetapeptide = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence]
+                    data_list_thismetapeptide[0] += 1
+                    data_list_thismetapeptide[1] = max(metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence][1],
+                                                      metapeptide.min_qualscore)
+                    if data_list_thismetapeptide[2] is None:
+                        data_list_thismetapeptide[2] = metapeptide.nt_seqs
                     else:
-                        if proteinlet.nt_seqs[0] not in data_list_thisproteinlet[2]:
-                            data_list_thisproteinlet[2].extend(proteinlet.nt_seqs)
+                        if metapeptide.nt_seqs[0] not in data_list_thismetapeptide[2]:
+                            data_list_thismetapeptide[2].extend(metapeptide.nt_seqs)
 
 
-            del proteinlets_this_read
+            del metapeptides_this_read
 
-        print("Processed %d records. %d proteinlets this file" %
-              (n_reads_processed, len(proteinletseq_readcount_minqualscore_altseqs_map)))
+        print("Processed %d records. %d metapeptides this file" %
+              (n_reads_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map)))
         sys.stdout.flush()
 
     # close the temp file for writing
-    out_proteinlet_tempfile.close()
+    out_metapeptide_tempfile.close()
     print("frames discarded because too short: %d" % n_frames_discarded_tooshort)
-    print("frames discarded because of a low proteinlet minimum quality score: %d" % n_frames_discarded_minqualscore)
+    print("frames discarded because of a low metapeptide minimum quality score: %d" % n_frames_discarded_minqualscore)
     print("frames discarded because of a stop codon: %d" % n_frames_discarded_stopcodon)
     print("frames discarded because the longest peptide was too short: %d" % n_frames_discarded_longestpep_tooshort)
     print("frames discarded because too few tryptic sites: %d" % n_frames_discarded_toofew_trypticsites)
-    print("frames used in proteinlets: %d" % n_frames_used_in_proteinlets)
+    print("frames used in metapeptides: %d" % n_frames_used_in_metapeptides)
 
-    print("Wrote %d proteinlets to temp file." % n_proteinlets_written_temp)
+    print("Wrote %d metapeptides to temp file." % n_metapeptides_written_temp)
     print("Fixing read counts and min quality scores...")
 
     # open it right back up again for reading
-    tempfile_csvreader = csv.DictReader(bgzf.BgzfReader(out_proteinlet_tempfilename), delimiter='\t')
+    tempfile_csvreader = csv.DictReader(bgzf.BgzfReader(out_metapeptide_tempfilename), delimiter='\t')
 
-    out_proteinlet_file = bgzf.BgzfWriter(out_filename, "w")
+    out_metapeptide_file = bgzf.BgzfWriter(out_filename, "w")
     print("Building database file %s with count, min quality data..." % out_filename)
-    out_proteinlet_file.write("\t".join(proteinlets.PROTEINLETDB_COLUMNS) + '\n')
+    out_metapeptide_file.write("\t".join(metapeptides.PROTEINLETDB_COLUMNS) + '\n')
 
     # update the temp file rows with correct readcount and minqualscore data, write the real file
     n_removed_mincount = 0
     n_written = 0
 
-    for proteinletseq in proteinletseq_readcount_minqualscore_altseqs_map:
+    for metapeptideseq in metapeptideseq_readcount_minqualscore_altseqs_map:
         tempfile_row = tempfile_csvreader.next()
         # paranoiacally check that we're merging the right rows
-        assert(tempfile_row['sequence'] == proteinletseq)
+        assert(tempfile_row['sequence'] == metapeptideseq)
 
         # check readcount. If it passes, update the row appropriately and write it
-        readcount, minqualscore, altseqs = proteinletseq_readcount_minqualscore_altseqs_map[proteinletseq]
+        readcount, minqualscore, altseqs = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptideseq]
         if altseqs is None:
             altseqs = []
 
@@ -217,20 +217,20 @@ def main():
             # altseqs now has all sequences, including first
             n_ntseqs = len(altseqs)
             tempfile_row['nt_sequence'] = ','.join(altseqs)
-            out_proteinlet_file.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
+            out_metapeptide_file.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
             if args.outfasta:
-                args.outfasta.write(">%s\n" % proteinletseq)
-                args.outfasta.write("%s\n" % proteinletseq)
+                args.outfasta.write(">%s\n" % metapeptideseq)
+                args.outfasta.write("%s\n" % metapeptideseq)
             n_written += 1
         else:
             n_removed_mincount += 1
 
-    os.remove(out_proteinlet_tempfilename)
+    os.remove(out_metapeptide_tempfilename)
     if args.minreadcount > 0 or args.minqualscore > 0:
         print("Removed %d due to low read count." % n_removed_mincount)
     if args.outfasta:
         args.outfasta.close()
-        print("Wrote %d proteinlets to fasta file %s." % (n_written, args.outfasta.name))
+        print("Wrote %d metapeptides to fasta file %s." % (n_written, args.outfasta.name))
 
     print("End time: %s. Elapsed time: %s" % (datetime.now(), datetime.now() - script_start_time))
     print("Done.")
