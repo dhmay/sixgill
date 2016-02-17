@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """
-Build a fasta database from a proteinlet database. Either nucleotide or amino acid.
+Build a fasta database from a metapeptide database. Either nucleotide or amino acid.
 """
 
 import argparse
 import logging
 from datetime import datetime
-from sixgill import proteinlets
+from sixgill import metapeptides
 from Bio import bgzf
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
@@ -37,8 +37,8 @@ def declare_gather_args():
 
     # declare args
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('proteinletdbfile', type=argparse.FileType('r'),
-                        help='input proteinlet database file')
+    parser.add_argument('metapeptidedbfile', type=argparse.FileType('r'),
+                        help='input metapeptide database file')
     parser.add_argument('--out', required=True, type=argparse.FileType('w'),
                         help='output file')
     parser.add_argument('--type', required=True, choices=FASTA_TYPES, help='database type')
@@ -58,32 +58,32 @@ def main():
     script_start_time = datetime.now()
     logger.debug("Start time: %s" % script_start_time)
 
-    # reader for the Bgzipped proteinlet database
-    bgzf_reader = bgzf.BgzfReader(args.proteinletdbfile.name)
+    # reader for the Bgzipped metapeptide database
+    bgzf_reader = bgzf.BgzfReader(args.metapeptidedbfile.name)
 
     n_entries = 0
     if args.type == FASTA_TYPE_AA:
-        for proteinlet in proteinlets.read_proteinlets(bgzf_reader):
+        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
             n_entries += 1
-            entry_name = proteinlet.sequence
-            write_protein_name_seq_to_fasta(entry_name, proteinlet.sequence, args.out)
+            entry_name = metapeptide.sequence
+            write_protein_name_seq_to_fasta(entry_name, metapeptide.sequence, args.out)
         print("Done. Wrote protein fasta with %d entries to %s" % (n_entries, args.out.name))
     elif args.type == FASTA_TYPE_NTMULTI:
-        for proteinlet in proteinlets.read_proteinlets(bgzf_reader):
-            for i in xrange(0, len(proteinlet.nt_seqs)):
+        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
+            for i in xrange(0, len(metapeptide.nt_seqs)):
                 n_entries += 1
-                nt_seq = proteinlet.nt_seqs[i]
-                entry_name = proteinlet.sequence + "_seq_" + str(i+1)
-                entry_desc = 'aaseq=' + proteinlet.sequence
+                nt_seq = metapeptide.nt_seqs[i]
+                entry_name = metapeptide.sequence + "_seq_" + str(i+1)
+                entry_desc = 'aaseq=' + metapeptide.sequence
                 write_dna_name_seq_to_fasta(entry_name, nt_seq, args.out, description=entry_desc)
         args.out.close()
         print("Done. Wrote DNA fasta with %s entries to %s" % (n_entries, args.out.name))
     elif args.type == FASTA_TYPE_NTSINGLE:
-        for proteinlet in proteinlets.read_proteinlets(bgzf_reader):
+        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
             n_entries += 1
-            nt_seq = proteinlet.nt_seqs[0]
-            entry_name = proteinlet.sequence
-            entry_desc = 'aaseq=' + proteinlet.sequence
+            nt_seq = metapeptide.nt_seqs[0]
+            entry_name = metapeptide.sequence
+            entry_desc = 'aaseq=' + metapeptide.sequence
             write_dna_name_seq_to_fasta(entry_name, nt_seq, args.out, description=entry_desc)
         args.out.close()
         print("Done. Wrote DNA fasta with %s entries to %s" % (n_entries, args.out.name))
