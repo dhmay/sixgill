@@ -34,16 +34,6 @@ def declare_gather_args():
                         help='input metapeptide database files')
     parser.add_argument('--out', type=argparse.FileType('w'), required=True,
                         help='output file')
-    parser.add_argument('--minorflength', type=int, default=0,
-                        help='minimum ORF length')
-    parser.add_argument('--minaaseqlength', type=int, default=0,
-                        help='minimum AA sequence length')
-    parser.add_argument('--minqualscore', type=int, default=0,
-                        help='minimum read quality score')
-    parser.add_argument('--minreadcount', type=int, default=0,
-                        help='minimum read count')
-    parser.add_argument('--minlongesttryppeplen', type=int, default=0,
-                        help='minimum length of the longest tryptic peptide')
 
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     return parser.parse_args()
@@ -72,8 +62,7 @@ def main():
     # map from metapeptides to counts of reads they occur in and min qual score
     metapeptideseq_readcount_minqualscore_altseqs_map = OrderedDict()
     n_lines_read = 0
-    if out_tempfile:
-        out_tempfile.write('\t'.join(metapeptides.PROTEINLETDB_COLUMNS) + "\n")
+    out_tempfile.write('\t'.join(metapeptides.METAPEPTIDEDB_COLUMNS) + "\n")
     for metapeptide_file in args.metapeptidedbfiles:
         metapeptide_filename = metapeptide_file.name
         metapeptide_file = bgzf.BgzfReader(metapeptide_filename)
@@ -105,12 +94,7 @@ def main():
                             nt_seqs_thismetapeptide.append(nt_seq)
             else:
                 # Got a new one. Put it in the map, and write it out if we're writing
-                if metapeptide.passes_filter(args.minaaseqlength,
-                                            args.minorflength,
-                                            0, 0,
-                                            args.minlongesttryppeplen):
-                    if out_tempfile:
-                        out_tempfile.write(metapeptide.make_output_line() + '\n')
+                out_tempfile.write(metapeptide.make_output_line() + '\n')
                 # got a new one that we want to keep
                 metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence] = [metapeptide.n_reads,
                                                                                          metapeptide.min_qualscore,
@@ -131,10 +115,9 @@ def main():
 
     out_metapeptide_file = bgzf.BgzfWriter(args.out.name, "w")
     print("Building output file %s with count, min quality data..." % args.out.name)
-    out_metapeptide_file.write("\t".join(metapeptides.PROTEINLETDB_COLUMNS) + '\n')
+    out_metapeptide_file.write("\t".join(metapeptides.METAPEPTIDEDB_COLUMNS) + '\n')
 
     # update the temp file rows with correct readcount and minqualscore data, write the real file
-    n_removed_count_or_qual = 0
     n_written = 0
     for metapeptideseq in metapeptideseq_readcount_minqualscore_altseqs_map:
         tempfile_row = tempfile_csvreader.next()
@@ -143,24 +126,18 @@ def main():
 
         # check readcount and qualscore. If they both pass, update the row appropriately and write it
         readcount, minqualscore, altseqs = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptideseq]
-        if readcount >= args.minreadcount and minqualscore >= args.minqualscore:
-            tempfile_row['n_reads'] = str(readcount)
-            tempfile_row['min_qualscore'] = str(minqualscore)
-            # update the nt_sequence column to contain all sequences
-            nt_seqs = tempfile_row['nt_sequence'].split(',')
-            for alt_seq in altseqs:
-                if alt_seq not in nt_seqs:
-                    altseqs.append(alt_seq)
-            tempfile_row['nt_sequence'] = ','.join(nt_seqs)
-            args.out.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
-            n_written += 1
-        else:
-            n_removed_count_or_qual += 1
+        tempfile_row['n_reads'] = str(readcount)
+        tempfile_row['min_qualscore'] = str(minqualscore)
+        # update the nt_sequence column to contain all sequences
+        nt_seqs = tempfile_row['nt_sequence'].split(',')
+        for alt_seq in altseqs:
+            if alt_seq not in nt_seqs:
+                altseqs.append(alt_seq)
+        tempfile_row['nt_sequence'] = ','.join(nt_seqs)
+        out_metapeptide_file.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
+        n_written += 1
 
-    args.out.close()
-
-    if args.minreadcount > 0 or args.minqualscore > 0:
-        print("Removed %d due to low read count or quality." % n_removed_count_or_qual)
+    out_metapeptide_file.close()
 
     os.remove(out_tempfilename)
     print("Deleted temp file")

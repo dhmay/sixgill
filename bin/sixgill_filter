@@ -38,10 +38,12 @@ def declare_gather_args():
                         help='minimum AA sequence length')
     parser.add_argument('--minreadcount', type=int, default=0,
                         help='minimum read count')
-    parser.add_argument('--minquality', type=int, default=0,
+    parser.add_argument('--minqualscore', type=int, default=0,
                         help='minimum basecall quality')
     parser.add_argument('--minlongesttryppeplen', type=int, default=0,
                         help='minimum length of the longest tryptic peptide')
+    parser.add_argument('--minmetagenescore', type=float, default=metapeptides.METAGENE_SCORE_MISSING,
+                        help='Minimum MetaGene score (%d for none)' % metapeptides.METAGENE_SCORE_MISSING)
     parser.add_argument('--maxmetapeptides', type=int, default=None,
                         help='maximum number of metapeptides to write')
 
@@ -70,10 +72,11 @@ def main():
     n_rows_written = metapeptides.write_metapeptides(metapeptides.filter_metapeptides(
             metapeptides.read_metapeptides(db_file),
             args.minorflength, args.minaaseqlength,
-            args.minreadcount, args.minquality, args.minlongesttryppeplen,
+            args.minreadcount, args.minqualscore, args.minlongesttryppeplen,
+            args.minmetagenescore,
             max_metapeptides=args.maxmetapeptides),
         out_bgzfwriter)
-
+    out_bgzfwriter.close()
     args.out.close()
     print("Wrote metapeptide database %s" % args.out.name)
     print("Done. Wrote %d rows" % n_rows_written)
