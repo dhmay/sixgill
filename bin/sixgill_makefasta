@@ -24,8 +24,13 @@ logger = logging.getLogger(__name__)
 FASTA_TYPE_AA = 'aa'  # amino acid
 FASTA_TYPE_NTMULTI = 'ntmulti'  # nucleotide, with all sequences
 FASTA_TYPE_NTSINGLE = 'ntsingle'  # nucleotide, with just one sequence essentially chosen at random
+FASTA_TYPE_PEPTIDE = 'peptide'  # peptide, with specified missed cleavages. This mode requires holding
+                                # all peptides in the database in memory, as each is only written once
 
-FASTA_TYPES = [FASTA_TYPE_AA, FASTA_TYPE_NTSINGLE, FASTA_TYPE_NTMULTI]
+FASTA_TYPES = [FASTA_TYPE_AA, FASTA_TYPE_NTSINGLE, FASTA_TYPE_NTMULTI, FASTA_TYPE_PEPTIDE]
+
+DEFAULT_MISSED_CLEAVAGES = 0
+DEFAULT_MIN_PEPTIDE_LENGTH = 7
 
 
 def declare_gather_args():
@@ -41,7 +46,12 @@ def declare_gather_args():
                         help='input metapeptide database file')
     parser.add_argument('--out', required=True, type=argparse.FileType('w'),
                         help='output file')
-    parser.add_argument('--type', required=True, choices=FASTA_TYPES, help='database type')
+    parser.add_argument('--type', required=True, choices=FASTA_TYPES,
+                        help='database type')
+    parser.add_argument('--missedcleavages', type=int, default=DEFAULT_MISSED_CLEAVAGES,
+                        help='missed cleavages (for type peptide only)')
+    parser.add_argument('--minpeptidelength', type=int, default=DEFAULT_MIN_PEPTIDE_LENGTH,
+                        help='minimum peptide length (for type peptide only)')
 
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     return parser.parse_args()
@@ -57,6 +67,8 @@ def main():
 
     script_start_time = datetime.now()
     logger.debug("Start time: %s" % script_start_time)
+
+    print("Reading metapeptide database %s..." % args.metapeptidedbfile.name)
 
     # reader for the Bgzipped metapeptide database
     bgzf_reader = bgzf.BgzfReader(args.metapeptidedbfile.name)
@@ -87,6 +99,23 @@ def main():
             write_dna_name_seq_to_fasta(entry_name, nt_seq, args.out, description=entry_desc)
         args.out.close()
         print("Done. Wrote DNA fasta with %s entries to %s" % (n_entries, args.out.name))
+    elif args.type == FASTA_TYPE_PEPTIDE:
+        peptides_written = set()
+        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
+            tryptic_peptides = metapeptides.TRYPTIC_CLEAVAGE_REGEX.findall(metapeptide.sequence)
+            peps_to_write = set()
+            for n_missed in xrange(0, args.missedcleavages + 1):
+                for i in xrange(0, len(tryptic_peptides) - n_missed):
+                    pep = ''.join(tryptic_peptides[i:i + n_missed + 1])
+                    if len(pep) >= args.minpeptidelength:
+                        peps_to_write.add(pep)
+            for pep in peps_to_write:
+                if pep not in peptides_written:
+                    write_protein_name_seq_to_fasta(metapeptide.sequence + '_' + pep, pep, args.out)
+                    n_entries += 1
+                    peptides_written.add(pep)
+        args.out.close()
+        print("Done. Wrote peptide fasta with %s entries to %s" % (n_entries, args.out.name))
 
     else:
         quit("Invalid fasta type. Quitting.")

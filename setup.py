@@ -8,7 +8,7 @@ if os.path.exists('README.rst'):
     long_description = open('README.rst').read()
 
 setup(name='sixgill',
-      version='0.1.2',
+      version='0.1.3',
       description='six-frame genome-inferred libraries for LC-MS/MS',
       author='Damon May',
       author_email='damonmay@uw.edu',
