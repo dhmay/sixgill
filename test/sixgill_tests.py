@@ -1,4 +1,4 @@
-from nose.tools import *
+from nose.tools import assert_equal
 import sixgill
 import os
 from subprocess import call
@@ -41,7 +41,9 @@ def setup_module():
 
 def teardown_module():
     print "TEAR DOWN."
-    shutil.rmtree(TEST_OUTPUT_DIRNAME)
+    for the_file in os.listdir(TEST_OUTPUT_DIRNAME):
+        file_path = os.path.join(TEST_OUTPUT_DIRNAME, the_file)
+        os.unlink(file_path)
     print("TEAR DOWN DONE.")
 
 
@@ -52,7 +54,7 @@ def test_build_nometagene():
     print("Running build command:")
     print(command)
     call(command.split(' '))
-    assert md5(TEST_DB_NOMETAGENE_FILENAME) == MD5_BUILD_NOMETAGENE
+    assert_equal(md5(TEST_DB_NOMETAGENE_FILENAME), MD5_BUILD_NOMETAGENE)
     print "Build test without metagene complete."
 
 
@@ -64,7 +66,7 @@ def test_build_metagene():
     print("Running build command:")
     print(command)
     call(command.split(' '))
-    assert md5(TEST_DB_METAGENE_FILENAME) == MD5_BUILD_METAGENE
+    assert_equal(md5(TEST_DB_METAGENE_FILENAME), MD5_BUILD_METAGENE)
     print "Build test with metagene complete."
 
 
@@ -76,7 +78,7 @@ def test_merge():
     print("Running merge command:")
     print(command)
     call(command.split(' '))
-    assert md5(TEST_DB_NOMETAGENE_METAGENE_MERGED_FILENAME) == MD5_MERGE
+    assert_equal(md5(TEST_DB_NOMETAGENE_METAGENE_MERGED_FILENAME), MD5_MERGE)
     print "Merge test complete."
 
 
@@ -87,7 +89,7 @@ def test_filter():
     print("Running filter command:")
     print(command)
     call(command.split(' '))
-    assert md5(TEST_DB_NOMETAGENE_METAGENE_MERGED_MIN2READS_FILENAME) == MD5_FILTER
+    assert_equal(md5(TEST_DB_NOMETAGENE_METAGENE_MERGED_MIN2READS_FILENAME), MD5_FILTER)
     print "Filter test complete."
 
 
@@ -98,7 +100,7 @@ def test_makefasta_aa():
     print("Running makefasta command:")
     print(command)
     call(command.split(' '))
-    assert md5(TEST_AA_FASTA_FILENAME) == MD5_MAKEFASTA_AA
+    assert_equal(md5(TEST_AA_FASTA_FILENAME), MD5_MAKEFASTA_AA)
     print "Filter test complete."
 
 
