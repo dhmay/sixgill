@@ -238,7 +238,7 @@ def main():
     print("Building database file %s with count, min quality data..." % out_filename)
     out_metapeptide_file.write("\t".join(metapeptides.METAPEPTIDEDB_COLUMNS) + '\n')
 
-    # update the temp file rows with correct readcount and minqualscore data, write the real file
+    # keep count of kept and discarded
     n_removed_mincount = 0
     n_written = 0
 
@@ -250,7 +250,7 @@ def main():
         else:
             n_removed_mincount += 1
     out_metapeptide_file.close()
-    if args.minreadcount > 0 or args.minqualscore > 0:
+    if args.minreadcount > 0:
         print("Removed %d due to low read count." % n_removed_mincount)
     if args.outfasta:
         args.outfasta.close()
