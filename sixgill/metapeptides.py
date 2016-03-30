@@ -42,8 +42,8 @@ DEFAULT_MIN_LONGEST_PEPTIDE_LENGTH = 7
 # default number of reads to keep a metapeptide
 DEFAULT_MIN_READ_COUNT = 2
 
-METAPEPTIDEDB_COLUMNS = ['sequence', 'length', 'min_qualscore', 'n_reads',
-                        'partial_orf_length', 'metagene_score', 'nt_sequence']
+METAPEPTIDEDB_COLUMNS = ['sequence', 'length', 'min_qualscore',
+                        'partial_orf_length', 'metagene_score', 'read_ids']
 
 METAPEPTIDE_STATUS_OK = 0
 METAPEPTIDE_STATUS_BAD_TOOSHORT = 1
@@ -56,43 +56,8 @@ METAPEPTIDE_STATUS_BAD_TOOFEW_TRYPTICSITES = 5
 METAGENE_SCORE_MISSING = -1.0
 
 
-def load_peptideproteins_from_tide_index(read_tide_index_file, peptides_to_keep):
-    """
-    Load a set of all proteins from a tide index that have a peptide in peptides_to_keep
-    :param read_tide_index_file:
-    :param peptides_to_keep:
-    :return:
-    """
-    result = set()
-    for row in csv.DictReader(read_tide_index_file, delimiter='\t'):
-        peptide = row['sequence']
-        if peptide in peptides_to_keep:
-            row_proteins = [protstr.strip() for protstr in row['protein id'].split(';')]
-            result.update(row_proteins)
-    return result
-
-
-def load_peptide_protein_map_from_tide_index(read_tide_index_file, peptides_to_keep=None):
-    """
-    load a map from peptide to a list of all proteins containing that peptide, from a Tide read-tide-index output
-    file. Optionally, only keep peptides in a given collection
-    :param read_tide_index_file:
-    :param peptides_to_keep:
-    :return:
-    """
-    result = {}
-    for row in csv.DictReader(read_tide_index_file, delimiter='\t'):
-        peptide = row['sequence']
-        # if we have a list of peptides to keep, and this isn't on it, ignore
-        if peptides_to_keep and peptide not in peptides_to_keep:
-            continue
-        row_proteins = [protstr.strip() for protstr in row['protein id'].split(';')]
-        result[peptide] = row_proteins
-    return result
-
-
 def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, min_basecall_qual,
-                             min_orf_length, min_longest_tryppep_length):
+                             min_orf_length, min_longest_tryppep_length, read_id):
     """
     Extract all metapeptides from a read that match the filtering criteria. Don't check for duplicates, return
     everything. This method does all the heavy lifting.
@@ -106,6 +71,7 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
     :param min_basecall_qual: minimum minimum basecall quality of a metapeptide to return
     :param min_orf_length: minimum length of the ORF to return
     :param min_longest_tryppep_length:
+    :param read_id: identifier of read
     :return: a tuple of [result metapeptides], (n_discarded_tooshort, n_discarded_minqualscore,
                                 n_discarded_stopcodon, n_discarded_longestpep_tooshort,
                                 n_discarded_toofew_trypticsites))
@@ -130,7 +96,7 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
         metapeptide, status = extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length,
                                                         min_basecall_qual, min_orf_length,
                                                         min_longest_tryppep_length, is_reverse,
-                                                        nt_shift, 0, len(ntseq))
+                                                        nt_shift, 0, len(ntseq), read_id)
         if status == METAPEPTIDE_STATUS_OK:
             result_metapeptides.append(metapeptide)
 
@@ -142,7 +108,7 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
 
 def extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length, min_basecall_qual,
                               min_orf_length, min_longest_tryppep_length,
-                              is_minus_strand, frame, startpos, endpos,
+                              is_minus_strand, frame, startpos, endpos, read_id,
                               should_keep_with_cterm_stop=False,
                               metagene_score=METAGENE_SCORE_MISSING):
     """
@@ -156,6 +122,7 @@ def extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length, m
     :param frame:
     :param startpos:
     :param endpos:
+    :param read_id: identifier of the read the frame came from
     :return: metapeptide, reason.
     """
 
@@ -274,7 +241,7 @@ def extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length, m
             raise ValueError("forward translation of nt seq:\n %s, does not match aa seq: \n %s" %
                              (dna.forward_translate_dna_firstframe(metapeptide_nt_seq),
                               metapeptide_seq))
-    metapeptide = Metapeptide(metapeptide_seq, min_aaqual, len(nt_seq_for_full_aaseq), [metapeptide_nt_seq], 1,
+    metapeptide = Metapeptide(metapeptide_seq, min_aaqual, len(nt_seq_for_full_aaseq), [read_id],
                               metagene_score)
     return metapeptide, METAPEPTIDE_STATUS_OK
 
@@ -291,14 +258,13 @@ def read_metapeptides(metapeptide_file):
         metapeptide_seq = row['sequence']
         min_qualscore = int(row['min_qualscore'])
         partial_orf_length = int(row['partial_orf_length'])
-        nt_seqs = row['nt_sequence'].split(',')
-        n_reads = int(row['n_reads'])
+        read_ids = row['read_ids'].split(',')
         metagene_score = METAGENE_SCORE_MISSING
         if 'metagene_score' in row.keys():
             metagene_score = float(row['metagene_score'])
 
         metapeptide = Metapeptide(metapeptide_seq, min_qualscore,
-                                  partial_orf_length, nt_seqs, n_reads, metagene_score)
+                                  partial_orf_length, read_ids, metagene_score)
         yield metapeptide
 
 
@@ -349,19 +315,24 @@ def filter_metapeptides(metapeptide_generator, min_orf_len, min_aa_seq_len,
             logger.debug("filter_metapeptides stopping early, after %d." % n_yielded)
             break
 
+
 class Metapeptide(object):
     """
-    A class representing a metapeptide, carrying around all the information we might need later. Does not
-    track individual read IDs
+    A class representing a metapeptide, carrying around all the information we might need later.
     """
-    def __init__(self, sequence, min_qualscore, partial_orf_len, nt_seqs,
-                 n_reads, metagene_score):
+    def __init__(self, sequence, min_qualscore, partial_orf_len,
+                 read_ids, metagene_score):
         self.sequence = sequence
         self.min_qualscore = min_qualscore
         self.partial_orf_len = partial_orf_len
-        self.nt_seqs = nt_seqs
-        self.n_reads = n_reads
+        self.read_ids = read_ids
         self.metagene_score = metagene_score
+
+    def get_readcount(self):
+        """
+        Count the reads
+        """
+        return len(self.read_ids)
 
     def calc_longest_tryppep_length(self):
         """
@@ -390,7 +361,7 @@ class Metapeptide(object):
             return False
         if self.partial_orf_len < min_orf_length:
             return False
-        if self.n_reads < min_reads:
+        if self.get_readcount() < min_reads:
             return False
         if self.min_qualscore < min_qualscore:
             return False
@@ -406,13 +377,12 @@ class Metapeptide(object):
         does not include \n
         :return:
         """
-        nt_sequence_field = ','.join(self.nt_seqs)
+        read_ids_field = ','.join(self.read_ids)
         return '\t'.join([self.sequence, str(len(self.sequence)),
                           str(self.min_qualscore),
-                          str(self.n_reads),
                           str(self.partial_orf_len),
                           str(self.metagene_score),
-                          nt_sequence_field])
+                          read_ids_field])
 
 
 

@@ -11,7 +11,6 @@ from datetime import datetime
 import pysam
 from sixgill import metapeptides
 import sys
-from collections import OrderedDict
 from Bio import bgzf
 import csv
 import os
@@ -72,9 +71,8 @@ def main():
     script_start_time = datetime.now()
     logger.debug("Start time: %s" % script_start_time)
 
-    # map from metapeptides to counts of reads they occur in and min qual score and alternative seq list.
-    # maintains order, for reading back from temp file
-    metapeptideseq_readcount_minqualscore_altseqs_map = OrderedDict()
+    # map from metapeptide sequences to Metapeptide objects
+    metapeptideseq_metapeptide_map = {}
 
     # for plotting read count vs. # metapeptides
     readsprocessed_nmetapeptides_xvals = []
@@ -86,11 +84,6 @@ def main():
     print("Minimum metapeptide AA sequence length: %d" % args.minlength)
 
     out_filename = args.out.name
-    # Write a temporary file for storing full metapeptide information. This
-    # can easily become too big to fit in memory.
-    out_metapeptide_tempfilename = out_filename + '.temp'
-    out_metapeptide_tempfile = bgzf.BgzfWriter(out_metapeptide_tempfilename, "w")
-    out_metapeptide_tempfile.write('\t'.join(metapeptides.METAPEPTIDEDB_COLUMNS) + "\n")
 
     # accounting
     n_reads_processed = -1
@@ -102,7 +95,6 @@ def main():
     n_candidates_discarded_minmetagenescore = 0
 
     n_frames_used_in_metapeptides = 0
-    n_metapeptides_written_temp = 0
 
     if args.metagenefile:
         print("Building metapeptides from MetaGene output...")
@@ -121,20 +113,18 @@ def main():
             n_metagenes_processed += 1
             if n_metagenes_processed % 50000 == 0:
                 readsprocessed_nmetapeptides_xvals.append(n_metagenes_processed)
-                readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_readcount_minqualscore_altseqs_map))
+                readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_metapeptide_map))
                 if n_metagenes_processed % 100000 == 0:
                     print("    Processed %d records. %d metapeptides so far. Time=%s" %
-                          (n_metagenes_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map),
+                          (n_metagenes_processed, len(metapeptideseq_metapeptide_map),
                            datetime.now() - script_start_time))
                 sys.stdout.flush()
-                if out_metapeptide_tempfile:
-                    out_metapeptide_tempfile.flush()
             # check MetaGene score
             if score < args.minmetagenescore:
                 n_candidates_discarded_minmetagenescore += 1
                 continue
 
-            # Passes. Find the read.
+            # metagene passes score threshold. Find the read.
             while aread.name != gene_readname:
                 try:
                     aread = cur_fastq.next()
@@ -143,7 +133,7 @@ def main():
                     cur_fastq_fileidx += 1
                     cur_fastq = pysam.FastqFile(args.fastqfiles[cur_fastq_fileidx].name)
                     print("Processed %d records. %d metapeptides so far" %
-                          (n_metagenes_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map)))
+                          (n_metagenes_processed, len(metapeptideseq_metapeptide_map)))
                     print("Processing fastq file %s..." % args.fastqfiles[cur_fastq_fileidx].name)
                     aread = cur_fastq.next()
 
@@ -157,6 +147,7 @@ def main():
                                                                          args.minlongesttryppeplen,
                                                                          strand == '-', frame,
                                                                          startpos, endpos,
+                                                                         gene_readname,
                                                                          should_keep_with_cterm_stop=True,
                                                                          metagene_score=score)
             # accounting
@@ -172,23 +163,7 @@ def main():
                 n_frames_discarded_toofew_trypticsites += 1
             if status != metapeptides.METAPEPTIDE_STATUS_OK:
                 continue
-            # if we haven't encountered it before, write it to the temp file.
-            # if we have, update the accounting for its entry
-            if metapeptide.sequence not in metapeptideseq_readcount_minqualscore_altseqs_map:
-                n_metapeptides_written_temp += 1
-                metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence] = \
-                    [1, metapeptide.min_qualscore, None]
-                out_metapeptide_tempfile.write(metapeptide.make_output_line() + "\n")
-            else:
-                data_list_thismetapeptide = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence]
-                data_list_thismetapeptide[0] += 1
-                data_list_thismetapeptide[1] = max(metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence][1],
-                                                  metapeptide.min_qualscore)
-                if data_list_thismetapeptide[2] is None:
-                    data_list_thismetapeptide[2] = metapeptide.nt_seqs
-                else:
-                    if metapeptide.nt_seqs[0] not in data_list_thismetapeptide[2]:
-                        data_list_thismetapeptide[2].extend(metapeptide.nt_seqs)
+            insert_or_update_metapeptide(metapeptide, metapeptideseq_metapeptide_map)
 
             sys.stdout.flush()
     else:
@@ -208,14 +183,12 @@ def main():
                 n_reads_processed += 1
                 if n_reads_processed % 50000 == 0:
                     readsprocessed_nmetapeptides_xvals.append(n_reads_processed)
-                    readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_readcount_minqualscore_altseqs_map))
+                    readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_metapeptide_map))
                     if n_reads_processed % 100000 == 0:
                         print("    Processed %d records. %d metapeptides so far. Time=%s" %
-                              (n_reads_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map),
+                              (n_reads_processed, len(metapeptideseq_metapeptide_map),
                                datetime.now() - script_start_time))
                     sys.stdout.flush()
-                    if out_metapeptide_tempfile:
-                        out_metapeptide_tempfile.flush()
 
                 ntseq = str(aread.sequence)
                 # have to subtract offset of 33 from pysam basecall quality
@@ -226,7 +199,9 @@ def main():
                                          n_discarded_stopcodon, n_discarded_longestpep_tooshort,
                                          n_discarded_toofew_trypticsites) = \
                     metapeptides.extract_read_metapeptides(ntseq, phred_qualscores, args.minlength,
-                                                         args.minqualscore, args.minorflength, args.minlongesttryppeplen)
+                                                           args.minqualscore, args.minorflength,
+                                                           args.minlongesttryppeplen,
+                                                           aread.name)
                 # accounting
                 n_frames_discarded_tooshort += n_discarded_tooshort
                 n_frames_discarded_minqualscore += n_discarded_minqualscore
@@ -235,33 +210,18 @@ def main():
                 n_frames_discarded_toofew_trypticsites += n_discarded_toofew_trypticsites
                 n_frames_used_in_metapeptides += len(metapeptides_this_read)
 
-                # for each metapeptide, if we haven't encountered it before, write it to the temp file.
+                # for each metapeptide, if we haven't encountered it before, put it in the map.
                 # if we have, update the accounting for its entry
                 for metapeptide in metapeptides_this_read:
-                    if metapeptide.sequence not in metapeptideseq_readcount_minqualscore_altseqs_map:
-                        n_metapeptides_written_temp += 1
-                        metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence] = \
-                            [1, metapeptide.min_qualscore, None]
-                        out_metapeptide_tempfile.write(metapeptide.make_output_line() + "\n")
-                    else:
-                        data_list_thismetapeptide = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence]
-                        data_list_thismetapeptide[0] += 1
-                        data_list_thismetapeptide[1] = max(metapeptideseq_readcount_minqualscore_altseqs_map[metapeptide.sequence][1],
-                                                          metapeptide.min_qualscore)
-                        if data_list_thismetapeptide[2] is None:
-                            data_list_thismetapeptide[2] = metapeptide.nt_seqs
-                        else:
-                            if metapeptide.nt_seqs[0] not in data_list_thismetapeptide[2]:
-                                data_list_thismetapeptide[2].extend(metapeptide.nt_seqs)
+                    insert_or_update_metapeptide(metapeptide, metapeptideseq_metapeptide_map)
+                    del metapeptide
 
                 del metapeptides_this_read
 
             print("Processed %d records. %d metapeptides this file" %
-                  (n_reads_processed, len(metapeptideseq_readcount_minqualscore_altseqs_map)))
+                  (n_reads_processed, len(metapeptideseq_metapeptide_map)))
             sys.stdout.flush()
 
-    # close the temp file for writing
-    out_metapeptide_tempfile.close()
     print("frames discarded because too short: %d" % n_frames_discarded_tooshort)
     print("frames discarded because of a low metapeptide minimum quality score: %d" % n_frames_discarded_minqualscore)
     print("frames discarded because of a stop codon: %d" % n_frames_discarded_stopcodon)
@@ -271,11 +231,8 @@ def main():
         print("frames discarded because too low MetaGene score: %d" % n_candidates_discarded_minmetagenescore)
     print("frames used in metapeptides: %d" % n_frames_used_in_metapeptides)
 
-    print("Wrote %d metapeptides to temp file." % n_metapeptides_written_temp)
+    print("Total metapeptides before any filtering: %d" % len(metapeptideseq_metapeptide_map))
     print("Fixing read counts and min quality scores...")
-
-    # open it right back up again for reading
-    tempfile_csvreader = csv.DictReader(bgzf.BgzfReader(out_metapeptide_tempfilename), delimiter='\t')
 
     out_metapeptide_file = bgzf.BgzfWriter(out_filename, "w")
     print("Building database file %s with count, min quality data..." % out_filename)
@@ -285,45 +242,14 @@ def main():
     n_removed_mincount = 0
     n_written = 0
 
-    for metapeptideseq in metapeptideseq_readcount_minqualscore_altseqs_map:
-        tempfile_row = tempfile_csvreader.next()
-        # paranoiacally check that we're merging the right rows
-        assert(tempfile_row['sequence'] == metapeptideseq)
-
+    for metapeptide in metapeptideseq_metapeptide_map.values():
         # check readcount. If it passes, update the row appropriately and write it
-        readcount, minqualscore, altseqs = metapeptideseq_readcount_minqualscore_altseqs_map[metapeptideseq]
-        if altseqs is None:
-            altseqs = []
-
-        # SCAFFOLDING!
-        if minqualscore < args.minqualscore:
-            quit("minqualscore %f!!!!!!" % minqualscore)
-
-
-        # IFFY ASSUMPTION for performance reasons: if readcount is < args.minreadcount
-        # then there's only one alt seq.
-        # This is only guaranteed true if args.minreadcount < 3.
-        n_ntseqs = 1
-        if readcount >= args.minreadcount:
-            tempfile_row['n_reads'] = str(readcount)
-            tempfile_row['min_qualscore'] = str(minqualscore)
-
-            # update the nt_sequence column to contain all sequences
-            first_nt_seq = tempfile_row['nt_sequence']
-            if first_nt_seq not in altseqs:
-                altseqs.append(first_nt_seq)
-            # altseqs now has all sequences, including first
-            n_ntseqs = len(altseqs)
-            tempfile_row['nt_sequence'] = ','.join(altseqs)
-            out_metapeptide_file.write("\t".join([tempfile_row[field] for field in tempfile_csvreader.fieldnames]) + '\n')
-            if args.outfasta:
-                args.outfasta.write(">%s\n" % metapeptideseq)
-                args.outfasta.write("%s\n" % metapeptideseq)
+        if metapeptide.get_readcount() >= args.minreadcount:
+            out_metapeptide_file.write(metapeptide.make_output_line() + "\n")
             n_written += 1
         else:
             n_removed_mincount += 1
     out_metapeptide_file.close()
-    os.remove(out_metapeptide_tempfilename)
     if args.minreadcount > 0 or args.minqualscore > 0:
         print("Removed %d due to low read count." % n_removed_mincount)
     if args.outfasta:
@@ -334,6 +260,7 @@ def main():
     print("Done.")
 
     print("extraction time: %s" % (datetime.now() - script_start_time))
+
 
 def read_metagene_genes(metagene_file):
     cur_readname = None
@@ -349,6 +276,22 @@ def read_metagene_genes(metagene_file):
             logger.debug("read: %s: %s" % (cur_readname, line))
             logger.debug("read: %s %s %s %s %s" % (cur_readname, startpos_str, endpos_str, strand, frame_str))
             yield cur_readname, int(startpos_str) - 1, int(endpos_str) - 1, strand, int(frame_str), float(score_str)
+
+
+def insert_or_update_metapeptide(metapeptide, metapeptideseq_metapeptide_map):
+    """
+
+    :param metapeptide:
+    :param metapeptideseq_metapeptide_map:
+    :return:
+    """
+    if metapeptide.sequence in metapeptideseq_metapeptide_map:
+        existing_metapeptide = metapeptideseq_metapeptide_map[metapeptide.sequence]
+        existing_metapeptide.metagene_score = max(existing_metapeptide.metagene_score, metapeptide.metagene_score)
+        existing_metapeptide.read_ids.append(metapeptide.read_ids[0])
+        existing_metapeptide.min_qualscore = max(existing_metapeptide.min_qualscore, metapeptide.min_qualscore)
+    else:
+        metapeptideseq_metapeptide_map[metapeptide.sequence] = metapeptide
 
 
 main()

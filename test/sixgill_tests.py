@@ -17,11 +17,14 @@ TEST_DB_NOMETAGENE_METAGENE_MERGED_FILENAME = os.path.join(TEST_OUTPUT_DIRNAME,
                                                            'metagene_nometagene_merged.metapeptides.gz')
 TEST_DB_NOMETAGENE_METAGENE_MERGED_MIN2READS_FILENAME = os.path.join(TEST_OUTPUT_DIRNAME,
                                                                      'metagene_nometagene_merged.min2reads.metapeptides.gz')
+TEST_AA_FASTA_FILENAME = os.path.join(TEST_OUTPUT_DIRNAME,
+                                      'testdb_metagene.metapeptides.fasta')
 
-MD5_BUILD_NOMETAGENE = '8974e4f35c7fcf584d4b3b4b4aa43c66'
-MD5_BUILD_METAGENE = 'eb8a061ea11b8e613e6bab56c4b788d6'
-MD5_MERGE = 'f7e856425f6a9255b124a74394a71c6d'
-MD5_FILTER = '41e40e0838c1f18d815c8e7002b40113'
+MD5_BUILD_NOMETAGENE = 'b715d9bb3ab938787e035f716be25b0c'
+MD5_BUILD_METAGENE = '774eba0107c2565c62ba9af4cf24912b'
+MD5_MERGE = '88707bd1c66d8bb1209c43a7862c8bed'
+MD5_FILTER = '93efd321f18aaff426036f34a1ccd383'
+MD5_MAKEFASTA_AA = '9740ad1737954d2bf22b65b4b88b0381'
 
 
 def setup_module():
@@ -80,11 +83,22 @@ def test_merge():
 def test_filter():
     print "Filter test"
     command = "sixgill_filter --out=%s --minreadcount=2 %s" % (TEST_DB_NOMETAGENE_METAGENE_MERGED_MIN2READS_FILENAME,
-                                                            TEST_DB_NOMETAGENE_METAGENE_MERGED_FILENAME)
+                                                               TEST_DB_NOMETAGENE_METAGENE_MERGED_FILENAME)
     print("Running filter command:")
     print(command)
     call(command.split(' '))
     assert md5(TEST_DB_NOMETAGENE_METAGENE_MERGED_MIN2READS_FILENAME) == MD5_FILTER
+    print "Filter test complete."
+
+
+def test_makefasta_aa():
+    print("Make fasta test")
+    command = "sixgill_makefasta --type=aa --out=%s %s" % (TEST_AA_FASTA_FILENAME,
+                                                           TEST_DB_METAGENE_FILENAME)
+    print("Running makefasta command:")
+    print(command)
+    call(command.split(' '))
+    assert md5(TEST_AA_FASTA_FILENAME) == MD5_MAKEFASTA_AA
     print "Filter test complete."
 
 

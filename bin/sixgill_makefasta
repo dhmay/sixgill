@@ -22,12 +22,10 @@ logger = logging.getLogger(__name__)
 
 # options for the type of output fasta file
 FASTA_TYPE_AA = 'aa'  # amino acid
-FASTA_TYPE_NTMULTI = 'ntmulti'  # nucleotide, with all sequences
-FASTA_TYPE_NTSINGLE = 'ntsingle'  # nucleotide, with just one sequence essentially chosen at random
 FASTA_TYPE_PEPTIDE = 'peptide'  # peptide, with specified missed cleavages. This mode requires holding
                                 # all peptides in the database in memory, as each is only written once
 
-FASTA_TYPES = [FASTA_TYPE_AA, FASTA_TYPE_NTSINGLE, FASTA_TYPE_NTMULTI, FASTA_TYPE_PEPTIDE]
+FASTA_TYPES = [FASTA_TYPE_AA, FASTA_TYPE_PEPTIDE]
 
 DEFAULT_MISSED_CLEAVAGES = 0
 DEFAULT_MIN_PEPTIDE_LENGTH = 7
@@ -80,25 +78,6 @@ def main():
             entry_name = metapeptide.sequence
             write_protein_name_seq_to_fasta(entry_name, metapeptide.sequence, args.out)
         print("Done. Wrote protein fasta with %d entries to %s" % (n_entries, args.out.name))
-    elif args.type == FASTA_TYPE_NTMULTI:
-        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
-            for i in xrange(0, len(metapeptide.nt_seqs)):
-                n_entries += 1
-                nt_seq = metapeptide.nt_seqs[i]
-                entry_name = metapeptide.sequence + "_seq_" + str(i+1)
-                entry_desc = 'aaseq=' + metapeptide.sequence
-                write_dna_name_seq_to_fasta(entry_name, nt_seq, args.out, description=entry_desc)
-        args.out.close()
-        print("Done. Wrote DNA fasta with %s entries to %s" % (n_entries, args.out.name))
-    elif args.type == FASTA_TYPE_NTSINGLE:
-        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
-            n_entries += 1
-            nt_seq = metapeptide.nt_seqs[0]
-            entry_name = metapeptide.sequence
-            entry_desc = 'aaseq=' + metapeptide.sequence
-            write_dna_name_seq_to_fasta(entry_name, nt_seq, args.out, description=entry_desc)
-        args.out.close()
-        print("Done. Wrote DNA fasta with %s entries to %s" % (n_entries, args.out.name))
     elif args.type == FASTA_TYPE_PEPTIDE:
         peptides_written = set()
         for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
