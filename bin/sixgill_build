@@ -114,7 +114,7 @@ def main():
             if n_metagenes_processed % 50000 == 0:
                 readsprocessed_nmetapeptides_xvals.append(n_metagenes_processed)
                 readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_metapeptide_map))
-                if n_metagenes_processed % 100000 == 0:
+                if n_metagenes_processed % 1000000 == 0:
                     print("    Processed %d records. %d metapeptides so far. Time=%s" %
                           (n_metagenes_processed, len(metapeptideseq_metapeptide_map),
                            datetime.now() - script_start_time))
@@ -184,7 +184,7 @@ def main():
                 if n_reads_processed % 50000 == 0:
                     readsprocessed_nmetapeptides_xvals.append(n_reads_processed)
                     readsprocessed_nmetapeptides_yvals.append(len(metapeptideseq_metapeptide_map))
-                    if n_reads_processed % 100000 == 0:
+                    if n_reads_processed % 1000000 == 0:
                         print("    Processed %d records. %d metapeptides so far. Time=%s" %
                               (n_reads_processed, len(metapeptideseq_metapeptide_map),
                                datetime.now() - script_start_time))
