@@ -271,6 +271,10 @@ def read_metagene_genes(metagene_file):
         if line.startswith("#"):
             if not line.startswith("# gc = ") and not line.startswith("# self"):
                 cur_readname = line.strip()[2:]
+                # if there's a space in the readname, everything after it needs to be
+                # removed in order to match up with the names pulled from the fastq
+                if ' ' in cur_readname:
+                    cur_readname = cur_readname[0:cur_readname.index(' ')]
         else:
             name, startpos_str, endpos_str, strand, frame_str, _, score_str, _, _, _, _ = line.strip().split('\t')
             logger.debug("read: %s: %s" % (cur_readname, line))
