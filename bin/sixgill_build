@@ -93,6 +93,7 @@ def main():
     n_frames_discarded_longestpep_tooshort = 0
     n_frames_discarded_toofew_trypticsites = 0
     n_candidates_discarded_minmetagenescore = 0
+    n_frames_discarded_ambiguousdna = 0
 
     n_frames_used_in_metapeptides = 0
 
@@ -161,6 +162,8 @@ def main():
                 n_frames_discarded_longestpep_tooshort += 1
             elif status == metapeptides.METAPEPTIDE_STATUS_BAD_TOOFEW_TRYPTICSITES:
                 n_frames_discarded_toofew_trypticsites += 1
+            elif status == metapeptides.METAPEPTIDE_STATUS_BAD_AMBIGUOUSDNA:
+                n_frames_discarded_ambiguousdna += 1
             if status != metapeptides.METAPEPTIDE_STATUS_OK:
                 continue
             insert_or_update_metapeptide(metapeptide, metapeptideseq_metapeptide_map)
@@ -197,7 +200,8 @@ def main():
                 # get all the metapeptides we can from this read
                 metapeptides_this_read, (n_discarded_tooshort, n_discarded_minqualscore,
                                          n_discarded_stopcodon, n_discarded_longestpep_tooshort,
-                                         n_discarded_toofew_trypticsites) = \
+                                         n_discarded_toofew_trypticsites,
+                                         n_discarded_ambiguousdna) = \
                     metapeptides.extract_read_metapeptides(ntseq, phred_qualscores, args.minlength,
                                                            args.minqualscore, args.minorflength,
                                                            args.minlongesttryppeplen,
@@ -209,6 +213,7 @@ def main():
                 n_frames_discarded_longestpep_tooshort += n_discarded_longestpep_tooshort
                 n_frames_discarded_toofew_trypticsites += n_discarded_toofew_trypticsites
                 n_frames_used_in_metapeptides += len(metapeptides_this_read)
+                n_frames_discarded_ambiguousdna = n_discarded_ambiguousdna
 
                 # for each metapeptide, if we haven't encountered it before, put it in the map.
                 # if we have, update the accounting for its entry
@@ -227,6 +232,7 @@ def main():
     print("frames discarded because of a stop codon: %d" % n_frames_discarded_stopcodon)
     print("frames discarded because the longest peptide was too short: %d" % n_frames_discarded_longestpep_tooshort)
     print("frames discarded because too few tryptic sites: %d" % n_frames_discarded_toofew_trypticsites)
+    print("frames discarded because of ambiguous DNA: %d" % n_frames_discarded_ambiguousdna)
     if args.minmetagenescore >= 0:
         print("frames discarded because too low MetaGene score: %d" % n_candidates_discarded_minmetagenescore)
     print("frames used in metapeptides: %d" % n_frames_used_in_metapeptides)

@@ -51,6 +51,7 @@ METAPEPTIDE_STATUS_BAD_MINQUALSCORE = 2
 METAPEPTIDE_STATUS_BAD_STOPCODON = 3
 METAPEPTIDE_STATUS_BAD_LONGESTPEP_TOOSHORT = 4
 METAPEPTIDE_STATUS_BAD_TOOFEW_TRYPTICSITES = 5
+METAPEPTIDE_STATUS_BAD_AMBIGUOUSDNA = 6
 
 # sentinel value that indicates that a metapeptide does not have a MetaGene score
 METAGENE_SCORE_MISSING = -1.0
@@ -74,7 +75,7 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
     :param read_id: identifier of read
     :return: a tuple of [result metapeptides], (n_discarded_tooshort, n_discarded_minqualscore,
                                 n_discarded_stopcodon, n_discarded_longestpep_tooshort,
-                                n_discarded_toofew_trypticsites))
+                                n_discarded_toofew_trypticsites, n_discarded_ambiguousdna))
     """
     # debug logging
     logger.debug("read: %s" % ntseq)
@@ -86,6 +87,7 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
     n_discarded_stopcodon = 0
     n_discarded_longestpep_tooshort = 0
     n_discarded_toofew_trypticsites = 0
+    n_discarded_ambiguousdna = 0
 
     # iterate over all the frames and find the metapeptides.
     result_metapeptides = []
@@ -99,11 +101,24 @@ def extract_read_metapeptides(ntseq, phred_qualscores, min_metapeptide_length, m
                                                         nt_shift, 0, len(ntseq), read_id)
         if status == METAPEPTIDE_STATUS_OK:
             result_metapeptides.append(metapeptide)
+        elif status == METAPEPTIDE_STATUS_BAD_TOOSHORT:
+            n_discarded_tooshort += 1
+        elif status == METAPEPTIDE_STATUS_BAD_MINQUALSCORE:
+            n_discarded_minqualscore += 1
+        elif status == METAPEPTIDE_STATUS_BAD_STOPCODON:
+            n_discarded_stopcodon += 1
+        elif status == METAPEPTIDE_STATUS_BAD_LONGESTPEP_TOOSHORT:
+            n_discarded_longestpep_tooshort += 1
+        elif status == METAPEPTIDE_STATUS_BAD_TOOFEW_TRYPTICSITES:
+            n_discarded_toofew_trypticsites += 1
+        elif status == METAPEPTIDE_STATUS_BAD_AMBIGUOUSDNA:
+            n_discarded_ambiguousdna += 1
 
     # return the metapeptides and accounting information for this read
     return result_metapeptides, (n_discarded_tooshort, n_discarded_minqualscore,
                                  n_discarded_stopcodon, n_discarded_longestpep_tooshort,
-                                 n_discarded_toofew_trypticsites)
+                                 n_discarded_toofew_trypticsites,
+                                 n_discarded_ambiguousdna)
 
 
 def extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length, min_basecall_qual,
@@ -129,6 +144,8 @@ def extract_frame_metapeptide(ntseq, phred_qualscores, min_metapeptide_length, m
     # figure out whether we're translating, and assessing quality, for the forward
     # sequence or the reverse
     seq_to_translate = ntseq[startpos:endpos+1]
+    if 'N' in seq_to_translate:
+        return None, METAPEPTIDE_STATUS_BAD_AMBIGUOUSDNA
     read_qualscores_list = phred_qualscores[startpos:endpos+1]
     # if this frame is a reverse frame, reverse ntseq and score list
     if is_minus_strand:
