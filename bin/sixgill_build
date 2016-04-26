@@ -94,7 +94,6 @@ def main():
     n_frames_discarded_toofew_trypticsites = 0
     n_candidates_discarded_minmetagenescore = 0
     n_frames_discarded_ambiguousdna = 0
-
     n_frames_used_in_metapeptides = 0
 
     if args.metagenefile:
@@ -213,7 +212,7 @@ def main():
                 n_frames_discarded_longestpep_tooshort += n_discarded_longestpep_tooshort
                 n_frames_discarded_toofew_trypticsites += n_discarded_toofew_trypticsites
                 n_frames_used_in_metapeptides += len(metapeptides_this_read)
-                n_frames_discarded_ambiguousdna = n_discarded_ambiguousdna
+                n_frames_discarded_ambiguousdna += n_discarded_ambiguousdna
 
                 # for each metapeptide, if we haven't encountered it before, put it in the map.
                 # if we have, update the accounting for its entry
