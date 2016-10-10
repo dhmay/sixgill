@@ -3,12 +3,17 @@
 from setuptools import setup
 import os
 
+VERSIONFILE=os.path.join("sixgill","version.py")
+exec(open(VERSIONFILE).read())
+
 long_description = 'six-frame genome-inferred libraries for LC-MS/MS'
 if os.path.exists('README.rst'):
     long_description = open('README.rst').read()
 
+version = open(VERSIONFILE, "rt").read().strip()
+
 setup(name='sixgill',
-      version='0.1.3',
+      version=__version__,
       description='six-frame genome-inferred libraries for LC-MS/MS',
       author='Damon May',
       author_email='damonmay@uw.edu',

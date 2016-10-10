@@ -12,13 +12,15 @@ import pysam
 from sixgill import metapeptides
 import sys
 from Bio import bgzf
-import csv
-import os
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+from Bio.Alphabet import IUPAC
+from Bio.Seq import Seq
+from sixgill import __version__
 
 __author__ = "Damon May"
 __copyright__ = "Copyright (c) 2016 Damon May"
 __license__ = "Apache 2.0"
-__version__ = "0.1"
 
 # logging
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ def declare_gather_args():
     parser.add_argument('--outfasta', type=argparse.FileType('w'),
                         help='Output metapeptide fasta database file')
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
+    parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=__version__))
     return parser.parse_args()
 
 
@@ -64,6 +67,7 @@ def main():
     # logging
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s: %(message)s")
+
     if args.debug:
         logger.setLevel(logging.DEBUG)
         metapeptides.logger.setLevel(logging.DEBUG)
@@ -258,8 +262,13 @@ def main():
     if args.minreadcount > 0:
         print("Removed %d due to low read count." % n_removed_mincount)
     if args.outfasta:
+        n_fasta_written = 0
+        for metapeptide in metapeptideseq_metapeptide_map.values():
+            n_fasta_written += 1
+            entry_name = metapeptide.sequence
+            write_protein_name_seq_to_fasta(entry_name, metapeptide.sequence, args.outfasta)
         args.outfasta.close()
-        print("Wrote %d metapeptides to fasta file %s." % (n_written, args.outfasta.name))
+        print("Wrote %d metapeptides to fasta file %s." % (n_fasta_written, args.outfasta.name))
 
     print("End time: %s. Elapsed time: %s" % (datetime.now(), datetime.now() - script_start_time))
     print("Done.")
@@ -301,6 +310,20 @@ def insert_or_update_metapeptide(metapeptide, metapeptideseq_metapeptide_map):
         existing_metapeptide.min_qualscore = max(existing_metapeptide.min_qualscore, metapeptide.min_qualscore)
     else:
         metapeptideseq_metapeptide_map[metapeptide.sequence] = metapeptide
+
+
+def write_protein_name_seq_to_fasta(name, seq, fasta_file, description=""):
+    """
+    create a single record for a name and a sequence; write it to a fasta file.
+    Should be able to call this multiple times on a single file
+    :param name:
+    :param seq:
+    :param fasta_file:
+    :return:
+    """
+    seq_record = SeqRecord(Seq(seq, IUPAC.protein), id=name, description=description)
+    SeqIO.write([seq_record], fasta_file, "fasta")
+
 
 
 main()
