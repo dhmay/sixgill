@@ -69,19 +69,24 @@ def main():
 
     print("Reading metapeptide database %s..." % args.metapeptidedbfile.name)
 
-    # reader for the Bgzipped metapeptide database
-    bgzf_reader = bgzf.BgzfReader(args.metapeptidedbfile.name)
+    # Issue #3: automatically determine whether input is gzipped
+    try:
+        db_file = bgzf.BgzfReader(args.metapeptidedbfile.name)
+        logger.debug("input is gzipped")
+    except Exception:
+        db_file = args.metapeptidedbfile
+        logger.debug("input is not gzipped")
 
     n_entries = 0
     if args.type == FASTA_TYPE_AA:
-        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
+        for metapeptide in metapeptides.read_metapeptides(db_file):
             n_entries += 1
             entry_name = metapeptide.sequence
             write_protein_name_seq_to_fasta(entry_name, metapeptide.sequence, args.out)
         print("Done. Wrote protein fasta with %d entries to %s" % (n_entries, args.out.name))
     elif args.type == FASTA_TYPE_PEPTIDE:
         peptides_written = set()
-        for metapeptide in metapeptides.read_metapeptides(bgzf_reader):
+        for metapeptide in metapeptides.read_metapeptides(db_file):
             tryptic_peptides = metapeptides.TRYPTIC_CLEAVAGE_REGEX.findall(metapeptide.sequence)
             peps_to_write = set()
             for n_missed in xrange(0, args.missedcleavages + 1):

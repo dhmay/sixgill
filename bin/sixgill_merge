@@ -31,7 +31,8 @@ def declare_gather_args():
                         help='input metapeptide database files')
     parser.add_argument('--out', type=argparse.FileType('w'), required=True,
                         help='output file')
-
+    parser.add_argument('--nogzipout', action="store_true",
+                        help='Write plaintetxt (non-gzipped) output (default gzipped)')
     parser.add_argument('--debug', action="store_true", help='Enable debug logging')
     parser.add_argument('--version', action='version', version='%(prog)s {version}'.format(version=__version__))
     return parser.parse_args()
@@ -57,11 +58,17 @@ def main():
     metapeptideseq_metapeptide_map = {}
     n_lines_read = 0
     for metapeptide_file in args.metapeptidedbfiles:
-        metapeptide_filename = metapeptide_file.name
-        metapeptide_file = bgzf.BgzfReader(metapeptide_filename)
-        print("Reading file %s..." % metapeptide_filename)
+        print("Reading file %s..." % metapeptide_file.name)
+        # Issue #3: automatically determine whether input is gzipped
+        try:
+            metapeptide_handle = bgzf.BgzfReader(metapeptide_file.name)
+            logger.debug("  input is gzipped")
+        except Exception:
+            logger.debug("  input is not gzipped")
+            metapeptide_handle = metapeptide_file
+
         n_lines_this_file = 0
-        for metapeptide in metapeptides.read_metapeptides(metapeptide_file):
+        for metapeptide in metapeptides.read_metapeptides(metapeptide_handle):
             if n_lines_read % 5000000 == 0:
                 print("    Read %d metapeptides (all files). %d unique metapeptides...." %
                       (n_lines_read, len(metapeptideseq_metapeptide_map)))
@@ -88,7 +95,13 @@ def main():
     print("Done reading input databases. Read %d metapeptide lines, %d unique metapeptides" %
           (n_lines_read, len(metapeptideseq_metapeptide_map)))
 
-    out_metapeptide_file = bgzf.BgzfWriter(args.out.name, "w")
+    # Issue #3: making output (bgzipped or not) format depend on argument
+    if args.nogzipout:
+        logger.debug("Writing non-gzipped output.")
+        out_metapeptide_file = args.out
+    else:
+        out_metapeptide_file = bgzf.BgzfWriter(args.out.name, "w")
+        logger.debug("Writing gzipped output.")
     print("Building output file %s with count, min quality data..." % args.out.name)
     out_metapeptide_file.write("\t".join(metapeptides.METAPEPTIDEDB_COLUMNS) + '\n')
 
