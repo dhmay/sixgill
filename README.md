@@ -10,6 +10,9 @@ short protein fragments for database search of LC-MS/MS metaproteomics data. A c
 resources for building and using metapeptide databases is 
 [here](http://noble.gs.washington.edu/proj/metapeptide/).
 
+Sixgill is also available through a [Galaxy interface](https://toolshed.g2.bx.psu.edu/repository?repository_id=bb465d48076ea3fe").
+
+
 ## Required Python versions
 
 Sixgill supports Python 2.7 
